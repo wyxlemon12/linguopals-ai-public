@@ -1,8 +1,6 @@
-import React from "react";
+﻿import React from "react";
 import {
   ArrowLeft,
-  BookOpen,
-  BrainCircuit,
   Loader2,
   Plus,
   Save,
@@ -10,8 +8,8 @@ import {
   Settings2,
   Sparkles,
   Target,
+  ThumbsUp,
   Trash2,
-  Trophy,
   User,
   UserPlus,
   Volume2,
@@ -86,15 +84,9 @@ const GRADE_OPTIONS = [
 const parseAIResponse = (text: string) => {
   const parts = {
     content: "",
-    model: "",
-    thought: "",
-    answer: "",
   };
 
   const contentMatch = text.match(/\[(?:对话内容|.*?的话)\]\s*[：:]?\s*([\s\S]*?)(?=\[|$)/);
-  const modelMatch = text.match(/\[(?:标准示范|改写原句)\]\s*[：:]?\s*([\s\S]*?)(?=\[|$)/);
-  const thoughtMatch = text.match(/\[(?:思考时刻|启发追问)\]\s*[：:]?\s*([\s\S]*?)(?=\[|$)/);
-  const answerMatch = text.match(/\[(?:挑战参考|参考答案)\]\s*[：:]?\s*([\s\S]*?)(?=\[|$)/);
 
   if (contentMatch) {
     parts.content = contentMatch[1].trim();
@@ -102,10 +94,6 @@ const parseAIResponse = (text: string) => {
     const firstBracket = text.indexOf("[");
     parts.content = firstBracket === -1 ? text.trim() : text.slice(0, firstBracket).trim();
   }
-
-  parts.model = modelMatch ? modelMatch[1].trim() : "";
-  parts.thought = thoughtMatch ? thoughtMatch[1].trim() : "";
-  parts.answer = answerMatch ? answerMatch[1].trim() : "";
 
   return parts;
 };
@@ -150,37 +138,13 @@ const simplifyGreetingForConversation = (text: string) => {
   return finalParts.join("");
 };
 
-const formatMissionPrompt = (text: string) => {
-  const normalized = text.trim();
-  if (!normalized) return normalized;
-  if (normalized.startsWith("问")) return normalized;
-
-  const mappings: Array<[string, string]> = [
-    ["说一说", "问问"],
-    ["讲一讲", "问问"],
-    ["说说", "问问"],
-    ["讲讲", "问问"],
-    ["学一学", "问问"],
-    ["找找", "问问"],
-    ["看看", "问问"],
-    ["试试", "问问"],
-  ];
-
-  for (const [from, to] of mappings) {
-    if (normalized.startsWith(from)) {
-      const replaced = `${to}${normalized.slice(from.length)}`;
-      return replaced.replace(/^问问你/, "问问我");
-    }
-  }
-
-  if (normalized.startsWith("去")) {
-    return `问问${normalized.slice(1)}`;
-  }
-
-  return normalized;
-};
-
 const isAvatarUrl = (avatar: string) => /^https?:\/\//i.test(avatar);
+
+const formatMissionDescriptionForDisplay = (text: string) =>
+  text
+    .replaceAll("用户需要", "你需要")
+    .replaceAll("用户需", "你需")
+    .replaceAll("用户", "你");
 
 const renderAvatar = (
   avatar: string,
@@ -249,6 +213,8 @@ export default function App() {
   const [isRefreshingMissions, setIsRefreshingMissions] = React.useState(false);
   const [isMissionDrawerOpen, setIsMissionDrawerOpen] = React.useState(false);
   const [mobileVoiceBottomOffset, setMobileVoiceBottomOffset] = React.useState(16);
+  const [showMissionCelebration, setShowMissionCelebration] = React.useState(false);
+  const [hasCelebratedCurrentScene, setHasCelebratedCurrentScene] = React.useState(false);
   const [statusMsg, setStatusMsg] = React.useState<{ type: "error" | "info"; text: string } | null>(
     null,
   );
@@ -262,7 +228,9 @@ export default function App() {
   const filteredCharacters = characters.filter(
     (character) => !character.studentId || character.studentId === activeStudent.id,
   );
-  const incompleteMissionCount = missions.filter((mission) => !mission.completed).length;
+  const revealedMissions = missions.filter((mission) => mission.completed);
+  const progressLabel = `${revealedMissions.length}/${missions.length || 3}`;
+  const allMissionsCompleted = missions.length > 0 && revealedMissions.length === missions.length;
 
   React.useEffect(() => {
     localStorage.setItem("linguopal_students", JSON.stringify(students));
@@ -279,6 +247,24 @@ export default function App() {
   React.useEffect(() => {
     setEditingReport(activeStudent.report || "");
   }, [activeStudent.id, activeStudent.report]);
+
+  React.useEffect(() => {
+    setShowMissionCelebration(false);
+    setHasCelebratedCurrentScene(false);
+  }, [selectedCharacter?.id]);
+
+  React.useEffect(() => {
+    if (!allMissionsCompleted || hasCelebratedCurrentScene) return;
+
+    setShowMissionCelebration(true);
+    setHasCelebratedCurrentScene(true);
+
+    const timeoutId = window.setTimeout(() => {
+      setShowMissionCelebration(false);
+    }, 2400);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [allMissionsCompleted, hasCelebratedCurrentScene]);
 
   React.useEffect(() => {
     const viewport = window.visualViewport;
@@ -409,11 +395,16 @@ export default function App() {
     const initialGreeting = simplifyGreetingForConversation(character.initialMessage);
     setSelectedCharacter(character);
     setIsMissionDrawerOpen(false);
+    setMissions([]);
     setMessages([{ role: "model", text: initialGreeting }]);
     setIsRefreshingMissions(true);
 
     try {
-      const { missions: freshMissions, greeting } = await refreshMissions(character, activeStudent.report);
+      const { missions: freshMissions, greeting } = await refreshMissions(
+        character,
+        activeStudent.report,
+        activeStudent,
+      );
       const conciseGreeting = simplifyGreetingForConversation(greeting);
 
       setMissions(freshMissions);
@@ -925,6 +916,25 @@ export default function App() {
         </div>
       )}
 
+      {showMissionCelebration && (
+        <div className="pointer-events-none fixed inset-0 z-[60] flex items-center justify-center px-6">
+          <div className="relative flex flex-col items-center">
+            <span className="absolute -left-10 top-3 h-5 w-5 rounded-full bg-orange-300/80 animate-ping" />
+            <span className="absolute -right-8 top-12 h-4 w-4 rounded-full bg-yellow-300/80 animate-bounce" />
+            <span className="absolute left-2 -top-6 h-3 w-3 rounded-full bg-pink-300/70 animate-pulse" />
+            <div className="rounded-[32px] border border-orange-100 bg-white/92 px-8 py-7 shadow-2xl backdrop-blur-sm">
+              <div className="flex flex-col items-center gap-3 text-center">
+                <div className="flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-orange-400 via-amber-300 to-yellow-200 shadow-[0_18px_40px_rgba(251,146,60,0.35)] animate-bounce">
+                  <ThumbsUp className="h-12 w-12 text-white" fill="currentColor" />
+                </div>
+                <p className="text-2xl font-black text-orange-600">太棒了！</p>
+                <p className="text-sm font-semibold text-slate-600">三个隐藏任务都完成啦</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <header className="flex items-center justify-between border-b border-gray-100 bg-white px-6 py-4">
         <div className="flex items-center gap-4">
           <button
@@ -968,11 +978,13 @@ export default function App() {
         onClick={() => setIsMissionDrawerOpen(true)}
         className="fixed bottom-24 right-4 z-40 inline-flex items-center gap-2 rounded-full bg-[var(--color-primary)] px-4 py-3 text-sm font-bold text-white shadow-lg lg:hidden"
       >
-        <Sparkles className="h-4 w-4" />
-        任务
-        <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs">
-          {incompleteMissionCount}
-        </span>
+        {isRefreshingMissions ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+        {isRefreshingMissions ? "生成中" : "任务"}
+        {!isRefreshingMissions && (
+          <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs">
+            {progressLabel}
+          </span>
+        )}
       </button>
 
       {isMissionDrawerOpen && (
@@ -991,10 +1003,10 @@ export default function App() {
               <div>
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-[var(--color-muted)]">
                   <Sparkles className="h-4 w-4 text-[var(--color-primary)]" />
-                  探险小任务
+                  探险进度
                 </div>
                 <p className="mt-2 text-sm text-[var(--color-muted)]">
-                  随时看一眼孩子接下来要问什么。
+                  已揭晓 {progressLabel}
                 </p>
               </div>
               <button
@@ -1008,13 +1020,13 @@ export default function App() {
             </div>
 
             <div className="space-y-3 pb-4">
-              {missions.map((mission) => (
+              {revealedMissions.map((mission) => (
                 <div key={mission.id} className="rounded-3xl border border-gray-100 bg-gray-50 p-4">
                   <p className="text-sm font-bold text-[var(--color-text)]">
                     {toTraditional(mission.title)}
                   </p>
                   <p className="mt-2 text-xs leading-6 text-[var(--color-muted)]">
-                    {toTraditional(formatMissionPrompt(mission.description))}
+                    {toTraditional(formatMissionDescriptionForDisplay(mission.description))}
                   </p>
                 </div>
               ))}
@@ -1023,6 +1035,12 @@ export default function App() {
                 <div className="flex items-center gap-3 rounded-3xl border border-dashed border-blue-100 bg-blue-50/40 p-4 text-sm text-blue-600">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   正在准备场景任务...
+                </div>
+              )}
+
+              {!isRefreshingMissions && missions.length > 0 && revealedMissions.length === 0 && (
+                <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+                  隐藏任务完成后会在这里揭晓。
                 </div>
               )}
 
@@ -1040,17 +1058,24 @@ export default function App() {
         <aside className="hidden w-80 overflow-y-auto border-r border-gray-100 bg-white p-6 lg:block">
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-[var(--color-muted)]">
             <Sparkles className="h-4 w-4 text-[var(--color-primary)]" />
-            探险小任务
+            探险进度
           </div>
+          <p className="mt-3 text-sm text-[var(--color-muted)]">已揭晓 {progressLabel}</p>
 
           <div className="mt-4 space-y-3">
-            {missions.map((mission) => (
-              <div key={mission.id} className="rounded-3xl border border-gray-100 bg-gray-50 p-4">
+            {revealedMissions.map((mission) => (
+              <div
+                key={mission.id}
+                data-just-unlocked={mission.justUnlocked ? "true" : "false"}
+                className={`rounded-3xl border bg-gray-50 p-4 ${
+                  mission.justUnlocked ? "border-orange-200 shadow-[0_0_0_1px_rgba(251,146,60,0.35)]" : "border-gray-100"
+                }`}
+              >
                 <p className="text-sm font-bold text-[var(--color-text)]">
                   {toTraditional(mission.title)}
                 </p>
                 <p className="mt-2 text-xs leading-6 text-[var(--color-muted)]">
-                  {toTraditional(formatMissionPrompt(mission.description))}
+                  {toTraditional(formatMissionDescriptionForDisplay(mission.description))}
                 </p>
               </div>
             ))}
@@ -1059,6 +1084,12 @@ export default function App() {
               <div className="flex items-center gap-3 rounded-3xl border border-dashed border-blue-100 bg-blue-50/40 p-4 text-sm text-blue-600">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 正在准备场景任务...
+              </div>
+            )}
+
+            {!isRefreshingMissions && missions.length > 0 && revealedMissions.length === 0 && (
+              <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+                隐藏任务完成后会在这里揭晓。
               </div>
             )}
           </div>
@@ -1070,7 +1101,7 @@ export default function App() {
               const parsed =
                 message.role === "model"
                   ? parseAIResponse(message.text)
-                  : { content: message.text, model: "", thought: "", answer: "" };
+                  : { content: message.text };
 
               return (
                 <div
@@ -1122,59 +1153,6 @@ export default function App() {
                       </div>
                     )}
 
-                    {message.role === "model" && (parsed.model || parsed.thought) && (
-                      <div className="grid gap-4 md:grid-cols-2">
-                        {parsed.model && (
-                          <div className="rounded-2xl border border-green-100 bg-green-50/60 p-4">
-                            <div className="mb-2 flex items-center justify-between gap-3">
-                              <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-green-700">
-                                <BookOpen className="h-3 w-3" />
-                                标准普通话表达
-                              </div>
-                              <button
-                                aria-label="播放标准普通话表达"
-                                onClick={() => playAudio(parsed.model)}
-                                disabled={isPlaying}
-                                className={`rounded-xl p-2 ${
-                                  isPlaying
-                                    ? "bg-green-500 text-white"
-                                    : "bg-white text-green-600 hover:bg-green-100"
-                                }`}
-                              >
-                                <Volume2 className="h-4 w-4" />
-                              </button>
-                            </div>
-                            <p className="text-sm font-medium italic text-green-900">
-                              {toTraditional(parsed.model)}
-                            </p>
-                          </div>
-                        )}
-
-                        {parsed.thought && (
-                          <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
-                            <div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-blue-700">
-                              <BrainCircuit className="h-3 w-3" />
-                              思考时刻
-                            </div>
-                            <p className="text-sm font-medium text-blue-900">
-                              {toTraditional(parsed.thought)}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {message.role === "model" && parsed.answer && (
-                      <div className="rounded-2xl border border-purple-100 bg-purple-50/60 p-4">
-                        <div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-purple-700">
-                          <Trophy className="h-3 w-3" />
-                          挑战参考
-                        </div>
-                        <p className="text-sm font-medium text-purple-900">
-                          {toTraditional(parsed.answer)}
-                        </p>
-                      </div>
-                    )}
                   </div>
                 </div>
               );
@@ -1244,3 +1222,4 @@ export default function App() {
     </div>
   );
 }
+

@@ -39,6 +39,38 @@ vi.mock("motion/react", () => ({
   ),
 }));
 
+const { hiddenMissions } = vi.hoisted(() => ({
+  hiddenMissions: [
+    {
+      id: "general_task_A",
+      type: "general",
+      title: "一般任务 A",
+      description: "用户需要说出包含目标词的动宾短语：把面团揉圆",
+      status: "未完成",
+      justUnlocked: false,
+      completed: false,
+    },
+    {
+      id: "general_task_B",
+      type: "general",
+      title: "一般任务 B",
+      description: "用户需要使用选择句型做出选择",
+      status: "未完成",
+      justUnlocked: false,
+      completed: false,
+    },
+    {
+      id: "challenge_task_C",
+      type: "challenge",
+      title: "挑战任务 C",
+      description: "用户需提问引导NPC透露隐藏信息：最喜欢的月饼口味",
+      status: "未完成",
+      justUnlocked: false,
+      completed: false,
+    },
+  ] as any[],
+}));
+
 vi.mock("./services/geminiService", () => ({
   CHARACTERS: [
     {
@@ -51,13 +83,13 @@ vi.mock("./services/geminiService", () => ({
       systemInstruction: "Stay in character.",
       initialMessage: "Initial greeting",
       voice: "Charon",
-      missions: [],
+      missions: hiddenMissions,
     },
   ],
   generateCustomCharacter: vi.fn(),
   generateTargetedCharacter: vi.fn(),
   refreshMissions: vi.fn().mockResolvedValue({
-    missions: [],
+    missions: hiddenMissions,
     greeting: "Fresh greeting from the guide",
   }),
   sendMessage: vi.fn(),
@@ -69,9 +101,9 @@ vi.mock("./services/geminiService", () => ({
 describe("App interaction flow", () => {
   it("shows the simplified greeting text after a character is selected", async () => {
     vi.mocked(refreshMissions).mockResolvedValueOnce({
-      missions: [],
+      missions: hiddenMissions,
       greeting:
-        "哈利你好呀！我是超能面点大侠！欢迎来到亮晶晶的月亮厨房，哇，这里到处都是香喷喷的味道，我正准备做圆圆的月饼呢！你看，案板上有很多好玩的东西，快快进来，跟我一起当小小面点师吧！",
+        "哈利你好呀！我是超能面点大侠！欢迎来到亮晶晶的月亮厨房，哇，这里到处都是香喷喷的味道，我正准备做圆圆的月饼呢！你看，案板上有好多好玩的东西，快快进来，跟我一起当小小面点师吧？",
     });
 
     render(<App />);
@@ -79,7 +111,7 @@ describe("App interaction flow", () => {
     await userEvent.click(screen.getByText(/Zhu Rong/));
 
     await waitFor(() => {
-      expect(screen.getByText("哈利你好呀！我是超能面点大侠！你想先说你看到什么吗？")).toBeTruthy();
+      expect(screen.getByText(/你想先说你看到什么吗/)).toBeTruthy();
     });
   });
 
@@ -96,24 +128,109 @@ describe("App interaction flow", () => {
     });
   });
 
-  it("plays the standard spoken model sentence independently", async () => {
+  it("renders only the dialogue bubble even when legacy helper tags are returned", async () => {
     vi.mocked(sendMessage).mockResolvedValueOnce({
-      text: "[对话内容]你好呀[标准示范]我想做月饼。[思考时刻]你想放什么馅？",
-      updatedMissions: [],
+      text: "[对话内容]月亮上住着玉兔。[思考时刻]你猜玉兔在做什么？[挑战参考]月亮上住着可爱的玉兔。",
+      updatedMissions: hiddenMissions,
     });
 
     render(<App />);
 
     await userEvent.click(screen.getByText(/Zhu Rong/));
-
-    vi.mocked(textToSpeech).mockClear();
-    await userEvent.type(screen.getByRole("textbox"), "我也想做{enter}");
-
-    const modelAudioButton = await screen.findByLabelText("播放标准普通话表达");
-    await userEvent.click(modelAudioButton);
+    await userEvent.type(screen.getByRole("textbox"), "月亮上住着什么呢{enter}");
 
     await waitFor(() => {
-      expect(textToSpeech).toHaveBeenCalledWith("我想做月饼。", "Charon");
+      expect(screen.getByText("月亮上住着玉兔。")).toBeTruthy();
+      expect(screen.queryByText("思考时刻")).toBeNull();
+      expect(screen.queryByText("挑战参考")).toBeNull();
+      expect(screen.queryByText("标准普通话表达")).toBeNull();
+    });
+  });
+
+  it("hides unfinished task descriptions and only shows progress", async () => {
+    render(<App />);
+
+    await userEvent.click(screen.getByText(/Zhu Rong/));
+
+    await waitFor(() => {
+      expect(screen.getByText("0/3")).toBeTruthy();
+      expect(screen.queryByText("用户需要说出包含目标词的动宾短语：把面团揉圆")).toBeNull();
+      expect(screen.queryByText("用户需要使用选择句型做出选择")).toBeNull();
+    });
+  });
+
+  it("reveals a completed task description after it is unlocked", async () => {
+    vi.mocked(sendMessage).mockResolvedValueOnce({
+      text: "好呀，我先把面团放在这里。",
+      updatedMissions: [
+        {
+          id: "general_task_A",
+          type: "general",
+          title: "一般任务 A",
+          description: "用户需要说出包含目标词的动宾短语：把面团揉圆",
+          status: "已完成",
+          justUnlocked: true,
+          completed: true,
+        },
+        hiddenMissions[1],
+        hiddenMissions[2],
+      ],
+    });
+
+    render(<App />);
+
+    await userEvent.click(screen.getByText(/Zhu Rong/));
+    await userEvent.type(screen.getByRole("textbox"), "把面团揉圆吧{enter}");
+
+    await waitFor(() => {
+      expect(screen.getByText("1/3")).toBeTruthy();
+      expect(screen.getByText("你需要说出包含目标词的动宾短语：把面团揉圆")).toBeTruthy();
+    });
+  });
+
+  it("shows a thumbs-up celebration when all three tasks are completed", async () => {
+    vi.mocked(sendMessage).mockResolvedValueOnce({
+      text: "太好了，我们都完成了！",
+      updatedMissions: [
+        {
+          id: "general_task_A",
+          type: "general",
+          title: "一般任务 A",
+          description: "用户需要说出包含目标词的动宾短语：把面团揉圆",
+          status: "已完成",
+          justUnlocked: false,
+          completed: true,
+        },
+        {
+          id: "general_task_B",
+          type: "general",
+          title: "一般任务 B",
+          description: "用户需要使用选择句型做出选择",
+          status: "已完成",
+          justUnlocked: false,
+          completed: true,
+        },
+        {
+          id: "challenge_task_C",
+          type: "challenge",
+          title: "挑战任务 C",
+          description: "用户需提问引导NPC透露隐藏信息：最喜欢的月饼口味",
+          status: "已完成",
+          justUnlocked: true,
+          completed: true,
+        },
+      ],
+    });
+
+    render(<App />);
+
+    await userEvent.click(screen.getByText(/Zhu Rong/));
+    await userEvent.type(screen.getByRole("textbox"), "我们都完成了{enter}");
+
+    await waitFor(() => {
+      expect(screen.getByText("太棒了！")).toBeTruthy();
+      expect(screen.getByText("三个隐藏任务都完成啦")).toBeTruthy();
+      expect(screen.getByText("3/3")).toBeTruthy();
     });
   });
 
@@ -138,7 +255,7 @@ describe("App interaction flow", () => {
       id: "targeted_1",
       name: "Moon Chef",
       roleTitle: "Guide",
-      avatar: "🌕",
+      avatar: "🌙",
       description: "A guided scene.",
       tags: ["report"],
       initialMessage: "Hello there",
@@ -184,27 +301,6 @@ describe("App interaction flow", () => {
     });
   });
 
-  it("shows mission text as information the child should ask about", async () => {
-    vi.mocked(refreshMissions).mockResolvedValueOnce({
-      greeting: "Fresh greeting from the guide",
-      missions: [
-        {
-          id: "m1",
-          title: "月饼口味",
-          description: "说说你想做什么口味的月饼。",
-          completed: false,
-        },
-      ],
-    });
-
-    render(<App />);
-    await userEvent.click(screen.getByText(/Zhu Rong/));
-
-    await waitFor(() => {
-      expect(screen.getByText("问问我想做什么口味的月饼。")).toBeTruthy();
-    });
-  });
-
   it("deletes a custom scene card from the home screen", async () => {
     vi.mocked(generateCustomCharacter).mockResolvedValueOnce({
       id: "custom_1",
@@ -224,7 +320,9 @@ describe("App interaction flow", () => {
     render(<App />);
 
     await userEvent.type(
-      screen.getByPlaceholderText(/森林里找宝藏|和小朋友一起在森林里找宝藏|描述你想生成的场景/i),
+      screen.getByPlaceholderText(
+        /描述你想生成的场景|和小朋友一起在森林里找宝藏/i,
+      ),
       "Treasure hunt",
     );
     await userEvent.click(screen.getByText(/生成新场景|生成场景/i));
@@ -280,18 +378,6 @@ describe("App interaction flow", () => {
   });
 
   it("opens and closes a mobile mission drawer", async () => {
-    vi.mocked(refreshMissions).mockResolvedValueOnce({
-      greeting: "Fresh greeting from the guide",
-      missions: [
-        {
-          id: "m1",
-          title: "链堥ゼ鍙ｅ懗",
-          description: "璇磋浣犳兂鍋氫粈涔堝彛鍛崇殑鏈堥ゼ銆?",
-          completed: false,
-        },
-      ],
-    });
-
     render(<App />);
 
     await userEvent.click(screen.getByText(/Zhu Rong/));
@@ -301,7 +387,10 @@ describe("App interaction flow", () => {
 
     const missionDrawer = screen.getByLabelText("移动端任务抽屉");
     expect(missionDrawer).toBeTruthy();
-    expect(within(missionDrawer).getByText("链堥ゼ鍙ｅ懗")).toBeTruthy();
+    expect(within(missionDrawer).getByText(/已揭晓\s*0\/3/)).toBeTruthy();
+    expect(
+      within(missionDrawer).queryByText("你需要说出包含目标词的动宾短语：把面团揉圆"),
+    ).toBeNull();
 
     await userEvent.click(within(missionDrawer).getByLabelText("关闭任务抽屉"));
 
@@ -309,6 +398,33 @@ describe("App interaction flow", () => {
       expect(screen.queryByLabelText("移动端任务抽屉")).toBeNull();
     });
   });
+
+  it("shows loading on the mission button while missions are being generated", async () => {
+    let resolveRefresh: ((value: { greeting: string; missions: typeof hiddenMissions }) => void) | null = null;
+    vi.mocked(refreshMissions).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveRefresh = resolve as typeof resolveRefresh;
+        }) as Promise<{ greeting: string; missions: typeof hiddenMissions }>,
+    );
+
+    render(<App />);
+
+    await userEvent.click(screen.getByText(/Zhu Rong/));
+
+    expect(await screen.findByText("生成中")).toBeTruthy();
+
+    resolveRefresh?.({
+      greeting: "Fresh greeting from the guide",
+      missions: hiddenMissions,
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("生成中")).toBeNull();
+      expect(screen.getAllByText("0/3").length).toBeGreaterThan(0);
+    });
+  });
+
   it("shows a bottom-centered mobile voice button in the chat view", async () => {
     render(<App />);
 

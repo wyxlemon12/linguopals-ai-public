@@ -8,7 +8,7 @@ export default async function handler(req: any, res: any) {
 
   try {
     const body = readJsonBody(req);
-    const data = await generateRefreshMissions(body.character, body.childReport);
+    const data = await generateRefreshMissions(body.character, body.childReport, body.student);
     return sendJson(res, 200, data);
   } catch (error) {
     return handleApiError(res, error);

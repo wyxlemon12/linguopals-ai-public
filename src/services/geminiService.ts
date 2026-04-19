@@ -23,10 +23,11 @@ export interface ChatMessage {
 
 export interface Mission {
   id: string;
+  type: "general" | "challenge";
   title: string;
   description: string;
-  targetPhrase?: string;
-  keyPhrases?: string[];
+  status: "未完成" | "已完成";
+  justUnlocked: boolean;
   completed: boolean;
 }
 
@@ -51,76 +52,82 @@ export const CHARACTERS: Character[] = [
   {
     id: "astronaut",
     name: "祝融 (Zhu Rong)",
-    roleTitle: "火星探险家",
+    roleTitle: "火星探险员",
     avatar: "🚀",
-    description: "一起在红色星球上找线索，聊聊火星上会看到什么。",
+    description: "一起在红色星球上找线索，边观察边聊天。",
     tags: ["太空", "观察", "表达"],
-    initialMessage: "你好呀！我是祝融！你想先说说你看到了什么吗？",
+    initialMessage: "你好呀！我是祝融。你准备好和我一起看看火星了吗？",
     voice: "Charon",
     missions: [
       {
-        id: "ast_1",
-        title: "火星颜色",
-        description: "试着让角色说出：“火星是红色的。”",
-        targetPhrase: "火星是红色的。",
-        keyPhrases: ["火星", "红色"],
+        id: "general_task_A",
+        type: "general",
+        title: "一般任务 A",
+        description: "用户需要说出包含目标词的完整短句：火星是红色的。",
+        status: "未完成",
+        justUnlocked: false,
         completed: false,
       },
       {
-        id: "ast_2",
-        title: "太空发现",
-        description: "试着让角色说出：“我在太空里看到了很多星星。”",
-        targetPhrase: "我在太空里看到了很多星星。",
-        keyPhrases: ["太空", "看到", "星星"],
+        id: "general_task_B",
+        type: "general",
+        title: "一般任务 B",
+        description: "用户需要使用选择句型做出决定。",
+        status: "未完成",
+        justUnlocked: false,
         completed: false,
       },
       {
-        id: "ast_3",
-        title: "回到地球",
-        description: "试着让角色说出：“我最想带一块火星石头回地球。”",
-        targetPhrase: "我最想带一块火星石头回地球。",
-        keyPhrases: ["最想", "火星石头", "回地球"],
+        id: "challenge_task_C",
+        type: "challenge",
+        title: "挑战任务 C",
+        description: "用户需提问引导NPC透露隐藏信息：想带回地球的东西。",
+        status: "未完成",
+        justUnlocked: false,
         completed: false,
       },
     ],
-    systemInstruction: "你是火星探险家祝融，要用简短中文鼓励孩子多说话。",
+    systemInstruction: "你是火星探险员祝融，要用简短中文自然聊天，像耐心老师一样鼓励孩子多说话。",
   },
   {
     id: "animal_keeper",
     name: "阿福 (A-Fu)",
     roleTitle: "动物园饲养员",
     avatar: "🐼",
-    description: "和动物们一起准备早餐，让孩子用简单句多开口。",
+    description: "和动物们一起准备早餐，让孩子在聊天里多开口。",
     tags: ["动物", "口语", "观察"],
-    initialMessage: "你好呀！我是阿福！你想先说说你看到哪只动物吗？",
+    initialMessage: "你好呀！我是阿福。你今天想先看看哪只小动物？",
     voice: "Kore",
     missions: [
       {
-        id: "fu_1",
-        title: "最喜欢的动物",
-        description: "试着让角色说出：“我最喜欢熊猫。”",
-        targetPhrase: "我最喜欢熊猫。",
-        keyPhrases: ["最喜欢", "熊猫"],
+        id: "general_task_A",
+        type: "general",
+        title: "一般任务 A",
+        description: "用户需要说出包含目标词的完整短句：熊猫喜欢吃竹子。",
+        status: "未完成",
+        justUnlocked: false,
         completed: false,
       },
       {
-        id: "fu_2",
-        title: "动物声音",
-        description: "试着让角色说出：“大象会发出呜呜的声音。”",
-        targetPhrase: "大象会发出呜呜的声音。",
-        keyPhrases: ["大象", "声音"],
+        id: "general_task_B",
+        type: "general",
+        title: "一般任务 B",
+        description: "用户需要使用选择句型做出决定。",
+        status: "未完成",
+        justUnlocked: false,
         completed: false,
       },
       {
-        id: "fu_3",
-        title: "动物早餐",
-        description: "试着让角色说出：“熊猫今天想吃新鲜竹子。”",
-        targetPhrase: "熊猫今天想吃新鲜竹子。",
-        keyPhrases: ["熊猫", "今天", "新鲜竹子"],
+        id: "challenge_task_C",
+        type: "challenge",
+        title: "挑战任务 C",
+        description: "用户需提问引导NPC透露隐藏信息：最喜欢的动物。",
+        status: "未完成",
+        justUnlocked: false,
         completed: false,
       },
     ],
-    systemInstruction: "你是动物园饲养员阿福，要用简短中文鼓励孩子多说话。",
+    systemInstruction: "你是动物园饲养员阿福，要自然聊天，像耐心老师一样鼓励孩子多说完整句。",
   },
   {
     id: "chef",
@@ -129,35 +136,38 @@ export const CHARACTERS: Character[] = [
     avatar: "🥮",
     description: "在香香的厨房里做点心，用食物话题引导孩子表达。",
     tags: ["美食", "生活", "表达"],
-    initialMessage: "你好呀！我是李师傅！你想先说说你看到什么食材吗？",
+    initialMessage: "你好呀！我是李师傅。今天你想和我一起做什么点心？",
     voice: "Puck",
     missions: [
       {
-        id: "chef_1",
-        title: "做月饼",
-        description: "试着让角色说出：“我想做豆沙月饼。”",
-        targetPhrase: "我想做豆沙月饼。",
-        keyPhrases: ["想做", "豆沙", "月饼"],
+        id: "general_task_A",
+        type: "general",
+        title: "一般任务 A",
+        description: "用户需要说出包含目标词的动宾结构：把面团揉圆。",
+        status: "未完成",
+        justUnlocked: false,
         completed: false,
       },
       {
-        id: "chef_2",
-        title: "喜欢的味道",
-        description: "试着让角色说出：“我最喜欢甜甜的味道。”",
-        targetPhrase: "我最喜欢甜甜的味道。",
-        keyPhrases: ["最喜欢", "甜甜", "味道"],
+        id: "general_task_B",
+        type: "general",
+        title: "一般任务 B",
+        description: "用户需要使用选择句型或建议句型。",
+        status: "未完成",
+        justUnlocked: false,
         completed: false,
       },
       {
-        id: "chef_3",
-        title: "厨房发现",
-        description: "试着让角色说出：“我在厨房里看到了圆圆的月饼模具。”",
-        targetPhrase: "我在厨房里看到了圆圆的月饼模具。",
-        keyPhrases: ["厨房", "看到", "月饼模具"],
+        id: "challenge_task_C",
+        type: "challenge",
+        title: "挑战任务 C",
+        description: "用户需提问引导NPC透露隐藏信息：想吃的点心。",
+        status: "未完成",
+        justUnlocked: false,
         completed: false,
       },
     ],
-    systemInstruction: "你是月亮厨房点心师李师傅，要用简短中文鼓励孩子多说话。",
+    systemInstruction: "你是月亮厨房的李师傅，要保持自然对话，用耐心老师的语气鼓励孩子多表达。",
   },
 ];
 
@@ -197,10 +207,12 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
 export async function refreshMissions(
   character: Character,
   childReport?: string,
+  student?: Student,
 ): Promise<{ missions: Mission[]; greeting: string }> {
   return postJson("/api/refresh-missions", {
     character,
     childReport,
+    student,
   });
 }
 
