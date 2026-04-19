@@ -246,6 +246,7 @@ export default function App() {
   const [isLoading, setIsLoading] = React.useState(false);
   const [isPlaying, setIsPlaying] = React.useState(false);
   const [isRefreshingMissions, setIsRefreshingMissions] = React.useState(false);
+  const [isMissionDrawerOpen, setIsMissionDrawerOpen] = React.useState(false);
   const [statusMsg, setStatusMsg] = React.useState<{ type: "error" | "info"; text: string } | null>(
     null,
   );
@@ -256,6 +257,7 @@ export default function App() {
   const filteredCharacters = characters.filter(
     (character) => !character.studentId || character.studentId === activeStudent.id,
   );
+  const incompleteMissionCount = missions.filter((mission) => !mission.completed).length;
 
   React.useEffect(() => {
     localStorage.setItem("linguopal_students", JSON.stringify(students));
@@ -379,6 +381,7 @@ export default function App() {
   const handleSelectCharacter = async (character: Character) => {
     const initialGreeting = simplifyGreetingForConversation(character.initialMessage);
     setSelectedCharacter(character);
+    setIsMissionDrawerOpen(false);
     setMessages([{ role: "model", text: initialGreeting }]);
     setIsRefreshingMissions(true);
 
@@ -472,6 +475,7 @@ export default function App() {
 
   const handleBack = () => {
     setSelectedCharacter(null);
+    setIsMissionDrawerOpen(false);
     setMessages([]);
     setMissions([]);
   };
@@ -837,6 +841,80 @@ export default function App() {
           </div>
         </div>
       </header>
+
+      <button
+        type="button"
+        aria-label="打开任务抽屉"
+        onClick={() => setIsMissionDrawerOpen(true)}
+        className="fixed bottom-24 right-4 z-40 inline-flex items-center gap-2 rounded-full bg-[var(--color-primary)] px-4 py-3 text-sm font-bold text-white shadow-lg lg:hidden"
+      >
+        <Sparkles className="h-4 w-4" />
+        任务
+        <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs">
+          {incompleteMissionCount}
+        </span>
+      </button>
+
+      {isMissionDrawerOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <button
+            type="button"
+            aria-label="关闭任务抽屉"
+            onClick={() => setIsMissionDrawerOpen(false)}
+            className="absolute inset-0 bg-slate-900/35"
+          />
+          <div
+            aria-label="移动端任务抽屉"
+            className="absolute bottom-0 left-0 right-0 rounded-t-[32px] bg-white p-6 shadow-2xl"
+          >
+            <div className="mb-4 flex items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-[var(--color-muted)]">
+                  <Sparkles className="h-4 w-4 text-[var(--color-primary)]" />
+                  探险小任务
+                </div>
+                <p className="mt-2 text-sm text-[var(--color-muted)]">
+                  随时看一眼孩子接下来要问什么。
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="关闭任务抽屉"
+                onClick={() => setIsMissionDrawerOpen(false)}
+                className="rounded-2xl bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600"
+              >
+                关闭
+              </button>
+            </div>
+
+            <div className="space-y-3 pb-4">
+              {missions.map((mission) => (
+                <div key={mission.id} className="rounded-3xl border border-gray-100 bg-gray-50 p-4">
+                  <p className="text-sm font-bold text-[var(--color-text)]">
+                    {toTraditional(mission.title)}
+                  </p>
+                  <p className="mt-2 text-xs leading-6 text-[var(--color-muted)]">
+                    {toTraditional(formatMissionPrompt(mission.description))}
+                  </p>
+                </div>
+              ))}
+
+              {isRefreshingMissions && (
+                <div className="flex items-center gap-3 rounded-3xl border border-dashed border-blue-100 bg-blue-50/40 p-4 text-sm text-blue-600">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  正在准备场景任务...
+                </div>
+              )}
+
+              {!isRefreshingMissions && missions.length === 0 && (
+                <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+                  还没有任务，先和角色聊两句看看。
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex min-h-0 flex-1">
         <aside className="hidden w-80 overflow-y-auto border-r border-gray-100 bg-white p-6 lg:block">

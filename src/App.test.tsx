@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import App from "./App";
@@ -276,6 +276,37 @@ describe("App interaction flow", () => {
     await waitFor(() => {
       const avatars = screen.getAllByRole("img", { name: "Bunny Hero avatar" });
       expect(avatars.length).toBeGreaterThan(0);
+    });
+  });
+
+  it("opens and closes a mobile mission drawer", async () => {
+    vi.mocked(refreshMissions).mockResolvedValueOnce({
+      greeting: "Fresh greeting from the guide",
+      missions: [
+        {
+          id: "m1",
+          title: "链堥ゼ鍙ｅ懗",
+          description: "璇磋浣犳兂鍋氫粈涔堝彛鍛崇殑鏈堥ゼ銆?",
+          completed: false,
+        },
+      ],
+    });
+
+    render(<App />);
+
+    await userEvent.click(screen.getByText(/Zhu Rong/));
+
+    const openDrawerButton = await screen.findByLabelText("打开任务抽屉");
+    await userEvent.click(openDrawerButton);
+
+    const missionDrawer = screen.getByLabelText("移动端任务抽屉");
+    expect(missionDrawer).toBeTruthy();
+    expect(within(missionDrawer).getByText("链堥ゼ鍙ｅ懗")).toBeTruthy();
+
+    await userEvent.click(within(missionDrawer).getByLabelText("关闭任务抽屉"));
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText("移动端任务抽屉")).toBeNull();
     });
   });
 });
