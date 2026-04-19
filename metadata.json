@@ -1,0 +1,8 @@
+{
+  "name": "LinguoPals AI (语伴AI)",
+  "description": "An AI-powered situational conversation bot for students to practice Mandarin in a stress-free environment with diverse characters.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": []
+}
