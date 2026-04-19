@@ -25,6 +25,8 @@ export interface Mission {
   id: string;
   title: string;
   description: string;
+  targetPhrase?: string;
+  keyPhrases?: string[];
   completed: boolean;
 }
 
@@ -56,9 +58,30 @@ export const CHARACTERS: Character[] = [
     initialMessage: "你好呀！我是祝融！你想先说说你看到了什么吗？",
     voice: "Charon",
     missions: [
-      { id: "ast_1", title: "火星颜色", description: "问问我火星是什么颜色。", completed: false },
-      { id: "ast_2", title: "太空发现", description: "问问我在太空里看到了什么。", completed: false },
-      { id: "ast_3", title: "回地球", description: "问问我最想带什么回地球。", completed: false },
+      {
+        id: "ast_1",
+        title: "火星颜色",
+        description: "试着让角色说出：“火星是红色的。”",
+        targetPhrase: "火星是红色的。",
+        keyPhrases: ["火星", "红色"],
+        completed: false,
+      },
+      {
+        id: "ast_2",
+        title: "太空发现",
+        description: "试着让角色说出：“我在太空里看到了很多星星。”",
+        targetPhrase: "我在太空里看到了很多星星。",
+        keyPhrases: ["太空", "看到", "星星"],
+        completed: false,
+      },
+      {
+        id: "ast_3",
+        title: "回到地球",
+        description: "试着让角色说出：“我最想带一块火星石头回地球。”",
+        targetPhrase: "我最想带一块火星石头回地球。",
+        keyPhrases: ["最想", "火星石头", "回地球"],
+        completed: false,
+      },
     ],
     systemInstruction: "你是火星探险家祝融，要用简短中文鼓励孩子多说话。",
   },
@@ -72,9 +95,30 @@ export const CHARACTERS: Character[] = [
     initialMessage: "你好呀！我是阿福！你想先说说你看到哪只动物吗？",
     voice: "Kore",
     missions: [
-      { id: "fu_1", title: "最喜欢的动物", description: "问问我最喜欢哪只动物。", completed: false },
-      { id: "fu_2", title: "动物声音", description: "问问我一种动物怎么叫。", completed: false },
-      { id: "fu_3", title: "动物早餐", description: "问问我动物今天想吃什么。", completed: false },
+      {
+        id: "fu_1",
+        title: "最喜欢的动物",
+        description: "试着让角色说出：“我最喜欢熊猫。”",
+        targetPhrase: "我最喜欢熊猫。",
+        keyPhrases: ["最喜欢", "熊猫"],
+        completed: false,
+      },
+      {
+        id: "fu_2",
+        title: "动物声音",
+        description: "试着让角色说出：“大象会发出呜呜的声音。”",
+        targetPhrase: "大象会发出呜呜的声音。",
+        keyPhrases: ["大象", "声音"],
+        completed: false,
+      },
+      {
+        id: "fu_3",
+        title: "动物早餐",
+        description: "试着让角色说出：“熊猫今天想吃新鲜竹子。”",
+        targetPhrase: "熊猫今天想吃新鲜竹子。",
+        keyPhrases: ["熊猫", "今天", "新鲜竹子"],
+        completed: false,
+      },
     ],
     systemInstruction: "你是动物园饲养员阿福，要用简短中文鼓励孩子多说话。",
   },
@@ -88,9 +132,30 @@ export const CHARACTERS: Character[] = [
     initialMessage: "你好呀！我是李师傅！你想先说说你看到什么食材吗？",
     voice: "Puck",
     missions: [
-      { id: "chef_1", title: "做月饼", description: "问问我想做什么口味的月饼。", completed: false },
-      { id: "chef_2", title: "喜欢的味道", description: "问问我最喜欢什么味道。", completed: false },
-      { id: "chef_3", title: "厨房发现", description: "问问我在厨房里看到了什么。", completed: false },
+      {
+        id: "chef_1",
+        title: "做月饼",
+        description: "试着让角色说出：“我想做豆沙月饼。”",
+        targetPhrase: "我想做豆沙月饼。",
+        keyPhrases: ["想做", "豆沙", "月饼"],
+        completed: false,
+      },
+      {
+        id: "chef_2",
+        title: "喜欢的味道",
+        description: "试着让角色说出：“我最喜欢甜甜的味道。”",
+        targetPhrase: "我最喜欢甜甜的味道。",
+        keyPhrases: ["最喜欢", "甜甜", "味道"],
+        completed: false,
+      },
+      {
+        id: "chef_3",
+        title: "厨房发现",
+        description: "试着让角色说出：“我在厨房里看到了圆圆的月饼模具。”",
+        targetPhrase: "我在厨房里看到了圆圆的月饼模具。",
+        keyPhrases: ["厨房", "看到", "月饼模具"],
+        completed: false,
+      },
     ],
     systemInstruction: "你是月亮厨房点心师李师傅，要用简短中文鼓励孩子多说话。",
   },
@@ -120,7 +185,9 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
 
   if (!response.ok) {
     const message =
-      typeof payload?.error === "string" ? payload.error : `Request failed for ${path}`;
+      typeof (payload as { error?: unknown })?.error === "string"
+        ? (payload as { error: string }).error
+        : `Request failed for ${path}`;
     throw new Error(message);
   }
 

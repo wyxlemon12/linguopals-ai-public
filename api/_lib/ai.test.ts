@@ -53,20 +53,9 @@ describe("server ai helpers", () => {
   });
 
   it("updates missions when the child response fulfills a mission", async () => {
-    generateContentMock
-      .mockResolvedValueOnce({
-        text: "[对话内容]太好了。[标准示范]我想做豆沙月饼。[思考时刻]你喜欢甜的吗？",
-      })
-      .mockResolvedValueOnce({
-        text: JSON.stringify([
-          {
-            id: "chef_1",
-            title: "做月饼",
-            description: "问问我想做什么口味的月饼。",
-            completed: true,
-          },
-        ]),
-      });
+    generateContentMock.mockResolvedValueOnce({
+      text: "[对话内容]我想做豆沙月饼。[标准示范]我想做豆沙月饼。[思考时刻]你喜欢甜的吗？",
+    });
 
     const { sendMessageData } = await import("./ai");
 
@@ -76,7 +65,9 @@ describe("server ai helpers", () => {
         {
           id: "chef_1",
           title: "做月饼",
-          description: "问问我想做什么口味的月饼。",
+          description: "试着让角色说出：“我想做豆沙月饼。”",
+          targetPhrase: "我想做豆沙月饼。",
+          keyPhrases: ["想做", "豆沙", "月饼"],
           completed: false,
         },
       ],
@@ -94,6 +85,6 @@ describe("server ai helpers", () => {
     });
 
     expect(result.updatedMissions[0].completed).toBe(true);
-    expect(generateContentMock).toHaveBeenCalledTimes(2);
+    expect(generateContentMock).toHaveBeenCalledTimes(1);
   });
 });

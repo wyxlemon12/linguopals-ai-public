@@ -74,6 +74,101 @@ const parseJsonText = <T>(text: string | undefined, fallback: T): T => {
   }
 };
 
+const parseDialogueContent = (text: string | undefined) => {
+  if (!text) return "";
+  const match = text.match(/\[(?:对话内容|瀵硅瘽鍐呭)\]\s*[：:]?\s*([\s\S]*?)(?=\[|$)/);
+  return match ? match[1].trim() : text.trim();
+};
+
+const normalizeText = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(/[“”"'`]/g, "")
+    .replace(/[，。！？、,.!?;:：；\s]/g, "")
+    .trim();
+
+const estimatedAgeFromGrade = (grade?: string) => {
+  const map: Record<string, number> = {
+    "Pre-K": 4,
+    K: 5,
+    G1: 6,
+    G2: 7,
+    G3: 8,
+    G4: 9,
+    G5: 10,
+    G6: 11,
+    G7: 12,
+    G8: 13,
+    G9: 14,
+    G10: 15,
+    G11: 16,
+    G12: 17,
+  };
+  return map[grade || ""] ?? 10;
+};
+
+const levenshteinDistance = (a: string, b: string) => {
+  const matrix = Array.from({ length: a.length + 1 }, () =>
+    new Array<number>(b.length + 1).fill(0),
+  );
+
+  for (let i = 0; i <= a.length; i += 1) matrix[i][0] = i;
+  for (let j = 0; j <= b.length; j += 1) matrix[0][j] = j;
+
+  for (let i = 1; i <= a.length; i += 1) {
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost,
+      );
+    }
+  }
+
+  return matrix[a.length][b.length];
+};
+
+const similarityScore = (target: string, candidate: string) => {
+  if (!target || !candidate) return 0;
+  const distance = levenshteinDistance(target, candidate);
+  return 1 - distance / Math.max(target.length, candidate.length);
+};
+
+const completeMissionsFromResponse = (
+  missions: any[],
+  responseText: string,
+  grade?: string,
+) => {
+  const dialogue = normalizeText(parseDialogueContent(responseText));
+  const isYoungerChild = estimatedAgeFromGrade(grade) <= 9;
+
+  return missions.map((mission) => {
+    if (mission.completed) return mission;
+
+    const target = normalizeText(mission.targetPhrase || "");
+    const keyPhrases = Array.isArray(mission.keyPhrases) ? mission.keyPhrases : [];
+    const keywordCoverage =
+      keyPhrases.length === 0
+        ? 0
+        : keyPhrases.filter((phrase) => dialogue.includes(normalizeText(String(phrase)))).length /
+          keyPhrases.length;
+    const similarity = similarityScore(target, dialogue);
+
+    const completed =
+      target.length > 0 && dialogue.includes(target)
+        ? true
+        : isYoungerChild
+          ? keywordCoverage >= 0.6 || similarity >= 0.58
+          : keywordCoverage >= 1 || similarity >= 0.78;
+
+    return {
+      ...mission,
+      completed,
+    };
+  });
+};
+
 export const generateRefreshMissions = async (character: any, childReport?: string) => {
   const prompt = `
 Create a speaking scene greeting and 3 mission prompts for a child.
@@ -86,7 +181,9 @@ ${childReport ? `Child report:\n${childReport}\n` : ""}
 
 Requirements:
 - Greeting must be 1-2 short simplified Chinese sentences plus one simple question.
-- Mission descriptions must describe information the child should ask the character about.
+- Each mission should be a hidden target line for the child to trigger naturally.
+- The visible mission description should be: 试着让角色说出：“目标句”
+- Also return hidden targetPhrase and keyPhrases for each mission.
 - Use simplified Chinese only.
 
 Return JSON with "greeting" and "missions".
@@ -110,9 +207,11 @@ Return JSON with "greeting" and "missions".
                   id: { type: Type.STRING },
                   title: { type: Type.STRING },
                   description: { type: Type.STRING },
+                  targetPhrase: { type: Type.STRING },
+                  keyPhrases: { type: Type.ARRAY, items: { type: Type.STRING } },
                   completed: { type: Type.BOOLEAN },
                 },
-                required: ["id", "title", "description", "completed"],
+                required: ["id", "title", "description", "targetPhrase", "keyPhrases", "completed"],
               },
             },
           },
@@ -140,7 +239,9 @@ ${buildStudentProfile(student)}
 Requirements:
 - Keep the role playful and brief.
 - Greeting must be 1-2 short simplified Chinese sentences plus one simple question.
-- Mission descriptions must be phrased as what the child should ask the character about.
+- The role must not know the hidden target phrases and should chat naturally after the greeting.
+- Mission descriptions should be shown to the child as: 试着让角色说出：“目标句”
+- Also return hidden targetPhrase and keyPhrases for each mission.
 - Avatar may be an emoji or a public avatar image URL.
 
 Return JSON with:
@@ -171,9 +272,11 @@ name, roleTitle, avatar, description, tags, initialMessage, systemInstruction, m
                   id: { type: Type.STRING },
                   title: { type: Type.STRING },
                   description: { type: Type.STRING },
+                  targetPhrase: { type: Type.STRING },
+                  keyPhrases: { type: Type.ARRAY, items: { type: Type.STRING } },
                   completed: { type: Type.BOOLEAN },
                 },
-                required: ["id", "title", "description", "completed"],
+                required: ["id", "title", "description", "targetPhrase", "keyPhrases", "completed"],
               },
             },
           },
@@ -213,7 +316,9 @@ ${buildStudentProfile(student)}
 Requirements:
 - Use the report and student profile as context.
 - Greeting must be 1-2 short simplified Chinese sentences plus one simple question.
-- Mission descriptions must be phrased as what the child should ask the character about.
+- The role must not know the hidden target phrases and should chat naturally after the greeting.
+- Mission descriptions should be shown to the child as: 试着让角色说出：“目标句”
+- Also return hidden targetPhrase and keyPhrases for each mission.
 - Avatar may be an emoji or a public avatar image URL.
 
 Return JSON with:
@@ -244,9 +349,11 @@ name, roleTitle, avatar, description, tags, initialMessage, systemInstruction, m
                   id: { type: Type.STRING },
                   title: { type: Type.STRING },
                   description: { type: Type.STRING },
+                  targetPhrase: { type: Type.STRING },
+                  keyPhrases: { type: Type.ARRAY, items: { type: Type.STRING } },
                   completed: { type: Type.BOOLEAN },
                 },
-                required: ["id", "title", "description", "completed"],
+                required: ["id", "title", "description", "targetPhrase", "keyPhrases", "completed"],
               },
             },
           },
@@ -370,7 +477,11 @@ Use the mission list only as a background guide for what information can be expl
 
   let updatedMissions = missions;
   if (missions.length > 0) {
-    updatedMissions = await updateMissionStatusData(history, missions);
+    updatedMissions = completeMissionsFromResponse(
+      missions,
+      response.text || "",
+      student?.info?.grade,
+    );
   }
 
   return {
