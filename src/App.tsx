@@ -244,12 +244,17 @@ export default function App() {
   const [isGenerating, setIsGenerating] = React.useState(false);
   const [isGeneratingTargeted, setIsGeneratingTargeted] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(false);
+  const [isListening, setIsListening] = React.useState(false);
   const [isPlaying, setIsPlaying] = React.useState(false);
   const [isRefreshingMissions, setIsRefreshingMissions] = React.useState(false);
   const [isMissionDrawerOpen, setIsMissionDrawerOpen] = React.useState(false);
+  const [mobileVoiceBottomOffset, setMobileVoiceBottomOffset] = React.useState(16);
   const [statusMsg, setStatusMsg] = React.useState<{ type: "error" | "info"; text: string } | null>(
     null,
   );
+  const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
+  const audioChunksRef = React.useRef<Blob[]>([]);
+  const mobileViewportBaseHeightRef = React.useRef<number | null>(null);
 
   const activeStudent =
     students.find((student) => student.id === activeStudentId) ?? students[0] ?? DEFAULT_STUDENTS[0];
@@ -274,6 +279,28 @@ export default function App() {
   React.useEffect(() => {
     setEditingReport(activeStudent.report || "");
   }, [activeStudent.id, activeStudent.report]);
+
+  React.useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+
+    mobileViewportBaseHeightRef.current = viewport.height;
+
+    const updateOffset = () => {
+      const baseHeight = mobileViewportBaseHeightRef.current ?? window.innerHeight;
+      const overlap = Math.max(0, baseHeight - viewport.height - viewport.offsetTop);
+      setMobileVoiceBottomOffset(16 + overlap);
+    };
+
+    updateOffset();
+    viewport.addEventListener("resize", updateOffset);
+    viewport.addEventListener("scroll", updateOffset);
+
+    return () => {
+      viewport.removeEventListener("resize", updateOffset);
+      viewport.removeEventListener("scroll", updateOffset);
+    };
+  }, []);
 
   const updateStatus = (type: "error" | "info", text: string) => {
     setStatusMsg({ type, text });
@@ -434,6 +461,99 @@ export default function App() {
   const handleDeleteCharacter = (characterId: string) => {
     setCharacters((previous) => previous.filter((character) => character.id !== characterId));
     updateStatus("info", "场景卡片已删除。");
+  };
+
+  const handleSendAudio = async (base64Audio: string, mimeType: string) => {
+    if (!selectedCharacter || isLoading) return;
+
+    const userMessage: ChatMessage = {
+      role: "user",
+      text: "[语音消息]",
+      audio: base64Audio,
+      audioMimeType: mimeType,
+    };
+    const newMessages = [...messages, userMessage];
+
+    setMessages(newMessages);
+    setIsLoading(true);
+
+    try {
+      const response = await sendMessage(
+        selectedCharacter.id,
+        newMessages,
+        missions,
+        activeStudent.report,
+        selectedCharacter.systemInstruction,
+        activeStudent,
+      );
+
+      setMessages([...newMessages, { role: "model", text: response.text }]);
+      setMissions(response.updatedMissions);
+
+      const parsed = parseAIResponse(response.text);
+      if (parsed.content) {
+        playAudio(parsed.content);
+      }
+    } catch {
+      setMessages([
+        ...newMessages,
+        { role: "model", text: "语音发送失败了，请再试一次。" },
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const stopRecording = () => {
+    if (!mediaRecorderRef.current || !isListening) return;
+    mediaRecorderRef.current.stop();
+    setIsListening(false);
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        const reader = new FileReader();
+
+        reader.readAsDataURL(audioBlob);
+        reader.onloadend = () => {
+          const result = typeof reader.result === "string" ? reader.result : "";
+          const base64Audio = result.split(",")[1];
+          if (base64Audio) {
+            void handleSendAudio(base64Audio, "audio/webm");
+          }
+        };
+
+        stream.getTracks().forEach((track) => track.stop());
+      };
+
+      recorder.start();
+      setIsListening(true);
+    } catch {
+      updateStatus("error", "无法使用麦克风，请检查权限。");
+    }
+  };
+
+  const toggleRecording = () => {
+    if (isListening) {
+      stopRecording();
+      return;
+    }
+
+    void startRecording();
   };
 
   const handleSendMessage = async () => {
@@ -1081,7 +1201,7 @@ export default function App() {
             )}
           </div>
 
-          <div className="border-t border-gray-100 bg-white p-6">
+          <div className="border-t border-gray-100 bg-white p-6 pb-24 md:pb-6">
             <div className="mx-auto flex max-w-4xl items-center gap-4">
               <div className="relative flex-1">
                 <input
@@ -1101,6 +1221,24 @@ export default function App() {
               </div>
             </div>
           </div>
+
+          <button
+            type="button"
+            aria-label="toggle-voice-input"
+            onClick={toggleRecording}
+            style={{ bottom: `${mobileVoiceBottomOffset}px` }}
+            className={`fixed left-1/2 z-40 flex h-16 w-16 -translate-x-1/2 items-center justify-center rounded-full shadow-xl transition-all md:hidden ${
+              isListening
+                ? "bg-red-500 text-white scale-110"
+                : "bg-[var(--color-primary)] text-white"
+            }`}
+          >
+            {isListening ? (
+              <span className="text-xl font-black">■</span>
+            ) : (
+              <span className="text-2xl">🎤</span>
+            )}
+          </button>
         </main>
       </div>
     </div>

@@ -309,4 +309,46 @@ describe("App interaction flow", () => {
       expect(screen.queryByLabelText("移动端任务抽屉")).toBeNull();
     });
   });
+  it("shows a bottom-centered mobile voice button in the chat view", async () => {
+    render(<App />);
+
+    await userEvent.click(screen.getByText(/Zhu Rong/));
+
+    const voiceButton = await screen.findByLabelText("toggle-voice-input");
+    expect(voiceButton).toBeTruthy();
+    expect(voiceButton.className).toContain("fixed");
+  });
+
+  it("moves the mobile voice button upward when the keyboard is open", async () => {
+    const listeners: Record<string, () => void> = {};
+    const viewport = {
+      width: 390,
+      height: 844,
+      offsetTop: 0,
+      addEventListener: vi.fn((event: string, handler: () => void) => {
+        listeners[event] = handler;
+      }),
+      removeEventListener: vi.fn(),
+    };
+
+    Object.defineProperty(window, "visualViewport", {
+      configurable: true,
+      writable: true,
+      value: viewport,
+    });
+
+    render(<App />);
+
+    await userEvent.click(screen.getByText(/Zhu Rong/));
+
+    const voiceButton = await screen.findByLabelText("toggle-voice-input");
+    expect((voiceButton as HTMLButtonElement).style.bottom).toBe("16px");
+
+    viewport.height = 520;
+    listeners.resize?.();
+
+    await waitFor(() => {
+      expect((voiceButton as HTMLButtonElement).style.bottom).toBe("340px");
+    });
+  });
 });
