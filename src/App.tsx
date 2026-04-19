@@ -209,7 +209,7 @@ export default function App() {
   const [isGeneratingTargeted, setIsGeneratingTargeted] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(false);
   const [isListening, setIsListening] = React.useState(false);
-  const [isPlaying, setIsPlaying] = React.useState(false);
+  const [playingAudioKey, setPlayingAudioKey] = React.useState<string | null>(null);
   const [isRefreshingMissions, setIsRefreshingMissions] = React.useState(false);
   const [isMissionDrawerOpen, setIsMissionDrawerOpen] = React.useState(false);
   const [mobileVoiceBottomOffset, setMobileVoiceBottomOffset] = React.useState(16);
@@ -221,6 +221,9 @@ export default function App() {
   const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
   const audioChunksRef = React.useRef<Blob[]>([]);
   const mobileViewportBaseHeightRef = React.useRef<number | null>(null);
+  const activeAudioRef = React.useRef<HTMLAudioElement | null>(null);
+  const activeUtteranceRef = React.useRef<SpeechSynthesisUtterance | null>(null);
+  const playbackSessionRef = React.useRef(0);
 
   const activeStudent =
     students.find((student) => student.id === activeStudentId) ?? students[0] ?? DEFAULT_STUDENTS[0];
@@ -362,17 +365,54 @@ export default function App() {
     updateStatus("info", "成长报告已保存。");
   };
 
+  const stopAudioPlayback = React.useCallback(() => {
+    playbackSessionRef.current += 1;
+    if (activeAudioRef.current) {
+      activeAudioRef.current.pause();
+      activeAudioRef.current.currentTime = 0;
+      activeAudioRef.current = null;
+    }
+
+    if (
+      "speechSynthesis" in window &&
+      typeof window.speechSynthesis.cancel === "function"
+    ) {
+      window.speechSynthesis.cancel();
+    }
+
+    activeUtteranceRef.current = null;
+    setPlayingAudioKey(null);
+  }, []);
+
   const playAudio = async (text: string, voice?: Character["voice"]) => {
     const chosenVoice = voice ?? selectedCharacter?.voice;
     if (!text || !chosenVoice) return;
 
-    setIsPlaying(true);
+    const playbackKey = `${chosenVoice}:${text}`;
+    if (playingAudioKey === playbackKey) {
+      stopAudioPlayback();
+      return;
+    }
+
+    stopAudioPlayback();
+    const sessionId = playbackSessionRef.current;
+    setPlayingAudioKey(playbackKey);
+
     try {
       const audioData = await textToSpeech(text, chosenVoice);
       if (audioData) {
         const audio = new Audio(`data:audio/mp3;base64,${audioData}`);
-        audio.onended = () => setIsPlaying(false);
-        audio.onerror = () => setIsPlaying(false);
+        activeAudioRef.current = audio;
+        audio.onended = () => {
+          if (playbackSessionRef.current !== sessionId) return;
+          activeAudioRef.current = null;
+          setPlayingAudioKey(null);
+        };
+        audio.onerror = () => {
+          if (playbackSessionRef.current !== sessionId) return;
+          activeAudioRef.current = null;
+          setPlayingAudioKey(null);
+        };
         await audio.play();
         return;
       }
@@ -383,11 +423,22 @@ export default function App() {
     if ("speechSynthesis" in window) {
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = "zh-CN";
-      utterance.onend = () => setIsPlaying(false);
-      utterance.onerror = () => setIsPlaying(false);
-      window.speechSynthesis.speak(utterance);
+      activeUtteranceRef.current = utterance;
+      utterance.onend = () => {
+        if (playbackSessionRef.current !== sessionId) return;
+        activeUtteranceRef.current = null;
+        setPlayingAudioKey(null);
+      };
+      utterance.onerror = () => {
+        if (playbackSessionRef.current !== sessionId) return;
+        activeUtteranceRef.current = null;
+        setPlayingAudioKey(null);
+      };
+      if (typeof window.speechSynthesis.speak === "function") {
+        window.speechSynthesis.speak(utterance);
+      }
     } else {
-      setIsPlaying(false);
+      setPlayingAudioKey(null);
     }
   };
 
@@ -1133,10 +1184,14 @@ export default function App() {
                             {toTraditional(parsed.content)}
                           </p>
                           <button
+                            aria-label={
+                              playingAudioKey === `${selectedCharacter.voice}:${parsed.content}`
+                                ? "停止对话音频"
+                                : "播放对话音频"
+                            }
                             onClick={() => playAudio(parsed.content)}
-                            disabled={isPlaying}
                             className={`shrink-0 rounded-2xl p-3 ${
-                              isPlaying
+                              playingAudioKey === `${selectedCharacter.voice}:${parsed.content}`
                                 ? "bg-blue-500 text-white"
                                 : "bg-blue-50 text-blue-600 hover:bg-blue-100"
                             }`}
@@ -1179,9 +1234,13 @@ export default function App() {
             )}
           </div>
 
-          <div className="border-t border-gray-100 bg-white p-6 pb-24 md:pb-6">
-            <div className="mx-auto flex max-w-4xl items-center gap-4">
-              <div className="relative flex-1">
+          <div
+            data-testid="composer-bar"
+            style={{ bottom: `${mobileVoiceBottomOffset}px` }}
+            className="fixed inset-x-0 z-30 border-t border-gray-100 bg-white p-6 pb-6 md:static md:inset-auto md:bottom-auto"
+          >
+            <div className="mx-auto grid max-w-4xl grid-cols-3 items-center gap-3">
+              <div className="relative col-span-2">
                 <input
                   type="text"
                   value={inputValue}
@@ -1197,26 +1256,23 @@ export default function App() {
                   <Send className="h-5 w-5" />
                 </button>
               </div>
+              <div className="col-span-1">
+                <button
+                  type="button"
+                  aria-label="toggle-voice-input"
+                  onClick={toggleRecording}
+                  className={`flex h-16 w-full items-center justify-center rounded-3xl shadow-sm transition-all ${
+                    isListening
+                      ? "bg-red-500 text-white scale-[1.02]"
+                      : "bg-[var(--color-primary)] text-white"
+                  }`}
+                >
+                  <span className="mr-2 text-xl">{isListening ? "■" : "🎤"}</span>
+                  <span className="text-sm font-bold">{isListening ? "结束说话" : "语音输入"}</span>
+                </button>
+              </div>
             </div>
           </div>
-
-          <button
-            type="button"
-            aria-label="toggle-voice-input"
-            onClick={toggleRecording}
-            style={{ bottom: `${mobileVoiceBottomOffset}px` }}
-            className={`fixed left-1/2 z-40 flex h-16 w-16 -translate-x-1/2 items-center justify-center rounded-full shadow-xl transition-all md:hidden ${
-              isListening
-                ? "bg-red-500 text-white scale-110"
-                : "bg-[var(--color-primary)] text-white"
-            }`}
-          >
-            {isListening ? (
-              <span className="text-xl font-black">■</span>
-            ) : (
-              <span className="text-2xl">🎤</span>
-            )}
-          </button>
         </main>
       </div>
     </div>

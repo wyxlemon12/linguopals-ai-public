@@ -98,7 +98,37 @@ vi.mock("./services/geminiService", () => ({
   updateMissionStatus: vi.fn(),
 }));
 
+class MockAudio {
+  currentTime = 0;
+  onended: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  pause = vi.fn();
+  play = vi.fn().mockResolvedValue(undefined);
+}
+
 describe("App interaction flow", () => {
+  it("toggles TTS playback when the dialogue speaker button is clicked twice", async () => {
+    const audioInstance = new MockAudio();
+    vi.stubGlobal("Audio", vi.fn(() => audioInstance));
+
+    render(<App />);
+
+    await userEvent.click(screen.getByText(/Zhu Rong/));
+
+    await waitFor(() => {
+      expect(textToSpeech).toHaveBeenCalled();
+      expect(audioInstance.play).toHaveBeenCalled();
+    });
+
+    const stopButton = await screen.findByLabelText("停止对话音频");
+    await userEvent.click(stopButton);
+
+    expect(audioInstance.pause).toHaveBeenCalled();
+    expect(audioInstance.currentTime).toBe(0);
+
+    vi.unstubAllGlobals();
+  });
+
   it("shows the simplified greeting text after a character is selected", async () => {
     vi.mocked(refreshMissions).mockResolvedValueOnce({
       missions: hiddenMissions,
@@ -425,17 +455,33 @@ describe("App interaction flow", () => {
     });
   });
 
-  it("shows a bottom-centered mobile voice button in the chat view", async () => {
+  it("shows a dedicated voice input button next to the mobile text field", async () => {
     render(<App />);
 
     await userEvent.click(screen.getByText(/Zhu Rong/));
 
     const voiceButton = await screen.findByLabelText("toggle-voice-input");
     expect(voiceButton).toBeTruthy();
-    expect(voiceButton.className).toContain("fixed");
+    expect(voiceButton.className).toContain("h-16");
+    expect(voiceButton.className).not.toContain("fixed");
   });
 
-  it("moves the mobile voice button upward when the keyboard is open", async () => {
+  it("uses a 2/3 input and 1/3 voice action layout across screen sizes", async () => {
+    render(<App />);
+
+    await userEvent.click(screen.getByText(/Zhu Rong/));
+
+    const textInput = await screen.findByRole("textbox");
+    const voiceButton = await screen.findByLabelText("toggle-voice-input");
+    const composer = textInput.parentElement?.parentElement;
+
+    expect(composer?.className).toContain("grid");
+    expect(composer?.className).not.toContain("md:flex");
+    expect(textInput.parentElement?.className).toContain("col-span-2");
+    expect(voiceButton.parentElement?.className).toContain("col-span-1");
+  });
+
+  it("keeps the inline voice button above the keyboard on mobile", async () => {
     const listeners: Record<string, () => void> = {};
     const viewport = {
       width: 390,
@@ -457,14 +503,14 @@ describe("App interaction flow", () => {
 
     await userEvent.click(screen.getByText(/Zhu Rong/));
 
-    const voiceButton = await screen.findByLabelText("toggle-voice-input");
-    expect((voiceButton as HTMLButtonElement).style.bottom).toBe("16px");
+    const composerBar = await screen.findByTestId("composer-bar");
+    expect((composerBar as HTMLDivElement).style.bottom).toBe("16px");
 
     viewport.height = 520;
     listeners.resize?.();
 
     await waitFor(() => {
-      expect((voiceButton as HTMLButtonElement).style.bottom).toBe("340px");
+      expect((composerBar as HTMLDivElement).style.bottom).toBe("340px");
     });
   });
 });
