@@ -357,15 +357,25 @@ Mission tracking:
 ${JSON.stringify(missions)}
 
 ${BASE_RESPONSE_RULES}
+
+After the greeting, keep the conversation natural and continuous.
+Do not explicitly tell the child to ask mission questions.
+Do not say things like "come ask me" or "now ask me this task".
+Use the mission list only as a background guide for what information can be explored naturally in conversation.
 `,
         temperature: 0.8,
       },
     }),
   );
 
+  let updatedMissions = missions;
+  if (missions.length > 0) {
+    updatedMissions = await updateMissionStatusData(history, missions);
+  }
+
   return {
     text: response.text || "",
-    updatedMissions: missions,
+    updatedMissions,
   };
 };
 
