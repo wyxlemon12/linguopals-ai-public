@@ -1,5 +1,5 @@
-import { sendMessageData } from "./_lib/ai";
-import { handleApiError, readJsonBody, sendJson } from "./_lib/http";
+import { sendMessageData } from "./_lib/ai.js";
+import { handleApiError, readJsonBody, sendJson } from "./_lib/http.js";
 
 export default async function handler(req: any, res: any) {
   if (req.method !== "POST") {
